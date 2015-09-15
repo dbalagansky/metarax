@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # vim: set fileencoding=utf8 :
+
 import daemon
 from daemon import runner
 import time
@@ -7,29 +8,39 @@ import logging
 import socket
 import threading
 import select
+import ConfigParser
+import os
 
 class Metarax:
     def __init__(self):
 # прикрутить конфигпарсер
-        self.stdin_path = '/dev/null'
-        self.stdout_path = '/dev/tty'
-        self.stderr_path = '/dev/tty'
-        self.pidfile_path = '/var/tmp/d.pid'
-        self.pidfile_timeout = 5
+        config = ConfigParser.ConfigParser()
+        config.read([os.path.expanduser('~/.metarax.cfg'), '/vagrant/.metarax.cfg'])
 
-        self.host = ''
-        self.port = 50008
+        self.stdin_path = config.get('daemon', 'stdin_path')
+        self.stdout_path = config.get('daemon', 'stdout_path')
+        self.stderr_path = config.get('daemon', 'stderr_path')
+        self.pidfile_path = config.get('daemon', 'pidfile_path')
+        self.pidfile_timeout = config.getint('daemon', 'pidfile_timeout')
+
+        self.host = config.get('socket_server', 'host')
+        self.port = config.getint('socket_server', 'port')
 
         self.logger = logging.getLogger()
-        self.logger.setLevel(logging.DEBUG)
-        self.fh = logging.FileHandler('/home/vagrant/d.log')
+
+        log_level = config.get('logger', 'level')
+        numeric_log_level = getattr(logging, config.get('logger', 'level'), None)
+        self.logger.setLevel(numeric_log_level)
+
+        self.fh = logging.FileHandler(os.path.expanduser(config.get('logger', 'log_path')))
         self.logger.addHandler(self.fh)
-        self.logger.debug('New socket server spawned')
 
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server.bind((self.host, self.port))
-        self.server.listen(5)
+        self.server.listen(config.getint('socket_server', 'max_parallel'))
+
+        self.logger.debug('New socket server spawned on %s:%i' % (self.host, self.port))
 
     def sampler(self):
         # Sampler function meant to run in separate thread
@@ -67,9 +78,16 @@ class Metarax:
     
     def run(self):
         self.logger.debug('daemon starting')
+
+        # start socket_server
         ss = threading.Thread(name="ss", target=self.socket_server)
         ss.setDaemon = True
         ss.start()
+
+        # start sampler daemon
+        sa = threading.Thread(name="sa", target=self.sampler)
+        sa.setDaemon = True
+        sa.start()
 
 d = Metarax()
 
