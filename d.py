@@ -34,7 +34,7 @@ class W:
 
     def socket_server(self):
         # Socket server
-        self.clist = []
+        clist = []
 
         # наверное нужно это в init перенести
         self.logger.debug('new socket server spawned')
@@ -42,30 +42,28 @@ class W:
         self.s.bind((self.host, self.port))
         self.s.listen(5)
 
-        self.clist.append(self.s)
+        clist.append(self.s)
 
-        while True:
-            rs, ws, es = select.select(self.clist, [], [])
+        while clist:
+            rs, ws, es = select.select(clist, [], [])
 # нормально обозвать пермененные
             for s in rs:
-                if s == self.s:
+                if s is self.s:
                     conn, addr = self.s.accept()
-                    self.clist.append(conn)
+                    conn.setblocking(0)
+                    clist.append(conn)
+                    self.logger.debug('New client with address: ' + addr)
                 else:
                     try:
                         data = s.recv(1024)
                         if data:
-                            s.send(data)
-                            self.logger.debug('that: %s' % data)
-# убрать дублирование кода
+                            s.send('OK' + data)
                         else:
+                            self.logger.debug(clist)
+                            clist.remove(s)
                             s.close()
-                            self.clist.remove(conn)
-                            continue
-                    except:
-                        s.close()
-                        #self.clist.remove(conn)
-                        continue
+                    except socket.error, e:
+                        clist.remove(s)
 
         self.s.close()
     
