@@ -10,13 +10,16 @@ import threading
 import select
 import ConfigParser
 import os
-import time
 import subprocess
+import signal
 
 class Metarax:
     def __init__(self):
         config = ConfigParser.ConfigParser()
         config.read([os.path.expanduser('~/.metarax.cfg'), '/vagrant/.metarax.cfg'])
+
+        self.ss_stop = threading.Event()
+        self.sa_stop = threading.Event()
 
         self.stdin_path = config.get('daemon', 'stdin_path')
         self.stdout_path = config.get('daemon', 'stdout_path')
@@ -45,56 +48,51 @@ class Metarax:
 
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    def sampler_cpu_top(self):
+    def sampler_cpu_top(self, stop_event):
         self.logger.info('CPU top sampler started!')
-        while True:
-            time.sleep(self.sampler_cpu_top_interval)
+        while not stop_event.is_set():
+            stop_event.wait(self.sampler_cpu_top_interval)
 
-    def sampler_diskio_util(self):
+    def sampler_diskio_util(self, stop_event):
         self.logger.info('Disk I/O utilization sampler started!')
-        while True:
+        while not stop_event.is_set():
             output = subprocess.check_output("iostat -d -xN `df -P /home | tail -1 | cut -f 1 -d ' ' | sed -e 's/^.*\///'` 1 1 | tail -2 | head -1 | awk '{ print $14 }'", shell=True).rstrip()
             self.logger.debug(output)
-            time.sleep(self.sampler_diskio_util_interval)
+            stop_event.wait(self.sampler_diskio_util_interval)
 
-    def sampler_vhost_top(self):
+    def sampler_vhost_top(self, stop_event):
         self.logger.info('Vhost top sampler started!')
-        while True:
-            time.sleep(self.sampler_vhost_top_interval)
+        while not stop_event.is_set():
+            stop_event.wait(self.sampler_vhost_top_interval)
 
-    def sampler_mysql_util(self):
+    def sampler_mysql_util(self, stop_event):
         self.logger.info('MySQL utilization sampler started!')
-        while True:
-            time.sleep(self.sampler_mysql_util_interval)
+        while not stop_event.is_set():
+            stop_event.wait(self.sampler_mysql_util_interval)
 
-    def sampler_disk_util(self):
+    def sampler_disk_util(self, stop_event):
         self.logger.info('Disk utilization sampler started!')
-        while True:
-            time.sleep(self.sampler_disk_util_interval)
+        while not stop_event.is_set():
+            stop_event.wait(self.sampler_disk_util_interval)
 
-    def sampler(self):
+    def sampler(self, stop_event):
         # Sampler function meant to run in separate thread
-        self.ct = threading.Thread(name="ct", target=self.sampler_cpu_top)
-        self.ct.setDaemon = True
+        self.ct = threading.Thread(target=self.sampler_cpu_top, args = (stop_event, ))
         self.ct.start()
 
-        self.diou = threading.Thread(name="diou", target=self.sampler_diskio_util)
-        self.diou.setDaemon = True
+        self.diou = threading.Thread(target=self.sampler_diskio_util, args = (stop_event, ))
         self.diou.start()
 
-        self.vt = threading.Thread(name="vt", target=self.sampler_vhost_top)
-        self.vt.setDaemon = True
+        self.vt = threading.Thread(target=self.sampler_vhost_top, args = (stop_event, ))
         self.vt.start()
 
-        self.mu = threading.Thread(name="mu", target=self.sampler_mysql_util)
-        self.mu.setDaemon = True
+        self.mu = threading.Thread(target=self.sampler_mysql_util, args = (stop_event, ))
         self.mu.start()
 
-        self.du = threading.Thread(name="du", target=self.sampler_disk_util)
-        self.du.setDaemon = True
+        self.du = threading.Thread(target=self.sampler_disk_util, args = (stop_event, ))
         self.du.start()
 
-    def socket_server(self):
+    def socket_server(self, stop_event):
         # Socket server
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server.bind((self.host, self.port))
@@ -102,12 +100,17 @@ class Metarax:
 
         self.logger.info('New socket server spawned on %s:%i' % (self.host, self.port))
 
-        inputs = []
+        inputs = [self.server]
+        outputs = []
 
-        inputs.append(self.server)
+        while inputs and not stop_event.is_set():
+            try:
+                rs, ws, es = select.select(inputs, outputs, [], 1)
+            except select.error:
+                break
+            except socket.error:
+                break
 
-        while inputs:
-            rs, ws, es = select.select(inputs, [], [])
 # нормально обозвать пермененные
             for s in rs:
                 if s is self.server:
@@ -129,22 +132,38 @@ class Metarax:
 
         self.server.close()
     
-    def run(self):
+    def start(self):
         self.logger.info('Metarax is warping out of the Twisting Nether')
 
         # start socket_server thread
-        self.ss = threading.Thread(name="ss", target=self.socket_server)
-        self.ss.setDaemon = True
+        self.ss = threading.Thread(target=self.socket_server, args=(self.ss_stop, ))
         self.ss.start()
 
         # start sampler thread
-        self.sa = threading.Thread(name="sa", target=self.sampler)
-        self.sa.setDaemon = True
+        self.sa = threading.Thread(target=self.sampler, args=(self.sa_stop, ))
         self.sa.start()
+        while True:
+            time.sleep(5)
 
-d = Metarax()
+    def stop(self, signum, frame):
+        self.logger.info('Sending Metarax back')
 
-# нужно в методе, который вызывается при стопе демона убивать все треды
-dr = runner.DaemonRunner(d)
-dr.daemon_context.files_preserve = [d.fh.stream, d.server.fileno()]
-dr.do_action()
+        self.ss_stop.set()
+        self.sa_stop.set()
+
+        self.server.shutdown()
+
+def run():
+    d = Metarax()
+
+    context = daemon.DaemonContext()
+    context.signal_map = {
+            signal.SIGTERM: d.stop,
+    }
+    context.files_preserve = [d.fh.stream, d.server.fileno()]
+
+    with context:
+        d.start()
+
+if __name__ == "__main__":
+    run()
