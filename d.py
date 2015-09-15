@@ -8,7 +8,7 @@ import socket
 import threading
 import select
 
-class W:
+class Metarax:
     def __init__(self):
 # прикрутить конфигпарсер
         self.stdin_path = '/dev/null'
@@ -24,8 +24,12 @@ class W:
         self.logger.setLevel(logging.DEBUG)
         self.fh = logging.FileHandler('/home/vagrant/d.log')
         self.logger.addHandler(self.fh)
+        self.logger.debug('New socket server spawned')
 
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server.bind((self.host, self.port))
+        self.server.listen(5)
 
     def sampler(self):
         # Sampler function meant to run in separate thread
@@ -34,38 +38,32 @@ class W:
 
     def socket_server(self):
         # Socket server
-        clist = []
+        inputs = []
 
-        # наверное нужно это в init перенести
-        self.logger.debug('new socket server spawned')
-        self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.s.bind((self.host, self.port))
-        self.s.listen(5)
+        inputs.append(self.server)
 
-        clist.append(self.s)
-
-        while clist:
-            rs, ws, es = select.select(clist, [], [])
+        while inputs:
+            rs, ws, es = select.select(inputs, [], [])
 # нормально обозвать пермененные
             for s in rs:
-                if s is self.s:
-                    conn, addr = self.s.accept()
+                if s is self.server:
+                    conn, addr = self.server.accept()
                     conn.setblocking(0)
-                    clist.append(conn)
-                    self.logger.debug('New client with address: ' + addr)
+                    inputs.append(conn)
+                    self.logger.debug('New client with address: ' + str(addr))
                 else:
                     try:
                         data = s.recv(1024)
                         if data:
                             s.send('OK' + data)
                         else:
-                            self.logger.debug(clist)
-                            clist.remove(s)
+                            self.logger.debug(inputs)
+                            inputs.remove(s)
                             s.close()
                     except socket.error, e:
-                        clist.remove(s)
+                        inputs.remove(s)
 
-        self.s.close()
+        self.server.close()
     
     def run(self):
         self.logger.debug('daemon starting')
@@ -73,9 +71,9 @@ class W:
         ss.setDaemon = True
         ss.start()
 
-w = W()
+d = Metarax()
 
 # нужно в методе, который вызывается при стопе демона убивать все треды
-dr = runner.DaemonRunner(w)
-dr.daemon_context.files_preserve = [w.fh.stream, w.s.fileno()]
+dr = runner.DaemonRunner(d)
+dr.daemon_context.files_preserve = [d.fh.stream, d.server.fileno()]
 dr.do_action()
