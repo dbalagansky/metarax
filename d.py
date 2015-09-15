@@ -37,7 +37,7 @@ class Metarax:
         self.logger = logging.getLogger()
 
         log_level = config.get('logger', 'level')
-        numeric_log_level = getattr(logging, config.get('logger', 'level'), None)
+        numeric_log_level = getattr(logging, config.get('logger', 'level').upper(), None)
         self.logger.setLevel(numeric_log_level)
 
         self.fh = logging.FileHandler(os.path.expanduser(config.get('logger', 'log_path')))
