@@ -2,7 +2,7 @@
 Description=Metarax, The Monitoring Daemon
 
 [Service]
-ExecStart=/vagrant/d.py
+ExecStart=/vagrant/metarax.py
 KillSignal=SIGTERM
 KillMode=process
 PIDFile=/var/tmp/metarax.pid
