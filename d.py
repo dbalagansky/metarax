@@ -2,7 +2,7 @@
 # vim: set fileencoding=utf8 :
 
 import daemon
-import lockfile
+import daemon.pidfile
 import time
 import sqlite3
 import logging
@@ -163,13 +163,13 @@ class Metarax:
                             self.logger.debug('From %s: %s' % (str(addr), cmd))
                             if cmd == 'diskio':
                                 s.send('OK %s\n' % self.get_diskio())
-
-                            self.logger.debug(data)
+                            else:
+                                self.logger.debug(data)
                         else:
                             inputs.remove(s)
                             s.close()
                     except socket.error, e:
-                        self.logger.exception('Something wrong in socket_server')
+                        self.logger.exception('Something wrong with socket_server')
                         inputs.remove(s)
 
         self.server.close()
@@ -217,11 +217,12 @@ def run():
     context = daemon.DaemonContext()
     context.signal_map = {
             signal.SIGTERM: d.stop,
+    #        signal.SIGKILL: 'terminate',
     }
     #context.stdin = d.stdin_path
     #context.stdout = d.stdout_path
     #context.sterr = d.stderr_path
-    #context.pidfile = lockfile.FileLock(d.pidfile_path)
+    context.pidfile = daemon.pidfile.PIDLockFile(d.pidfile_path)
     context.files_preserve = [d.fh.stream, d.server.fileno()]
 
     with context:
