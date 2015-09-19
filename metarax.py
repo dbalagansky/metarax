@@ -14,6 +14,29 @@ import os
 import subprocess
 import signal
 
+# это будет класс для основных потоков (sampler, socket_server, alerter?)
+# хотя, пока можно просто гасить тред sampler'а в треде socket_server. 
+#class MetaraxTendril:
+    #def ctl_thread(self, thread, target, stop, action):
+        #self.logger.debug('Checking if thread %s exists', thread)
+        #if not thread:
+            #thread = threading.Thread(target=target, args=(stop, ))
+
+        #self.logger.debug('Running acton on %s thread', thread)
+        #if action == 'start':
+            #self.logger.debug('action start')
+            #try:
+                #if not thread.is_alive():
+                    #self.logger.debug('Thread %s is not alive, starting', thread)
+                    #thread.start()
+            #except:
+                #self.logger.exception('Exception with thread %s', thread)
+        #elif action == 'stop':
+            #if thread.is_alive():
+                #stop.set()
+        #else:
+            #pass
+
 class Metarax:
     def __init__(self):
         config = ConfigParser.ConfigParser()
@@ -110,10 +133,6 @@ class Metarax:
         self.du = threading.Thread(target=self.sampler_disk_util, args = (stop_event, ))
         self.du.start()
 
-    def parse_cmd(self, data):
-        if str(data.strip()) == 'diskio':
-            return 'diskio'
-
     def get_diskio(self):
         try:
             db_conn = sqlite3.connect(self.db)
@@ -128,6 +147,10 @@ class Metarax:
             self.logger.exception('stupid database')
 
         return "%.02f" % diskio_avg
+
+    def shutdown(self):
+        pass
+        # self.sa_stop.set()
 
     def socket_server(self, stop_event):
         # Socket server
@@ -148,36 +171,36 @@ class Metarax:
             except socket.error:
                 break
 
-# нормально обозвать пермененные
             for s in rs:
                 if s is self.server:
                     conn, addr = self.server.accept()
                     conn.setblocking(0)
                     inputs.append(conn)
-                    self.logger.info('New client with address: ' + str(addr))
+                    self.logger.info('Client connected: %s' % str(addr))
                 else:
                     try:
                         data = s.recv(1024)
                         if data:
-                            cmd = self.parse_cmd(data)
+                            cmd = str(data.strip())
                             self.logger.debug('From %s: %s' % (str(addr), cmd))
                             if cmd == 'diskio':
                                 s.send('OK %s\n' % self.get_diskio())
+                            elif cmd == 'shutdown':
+                                s.send('OK %s\n' % self.shutdown())
                             else:
+                                s.send('FAIL %s\nUse \'help\' for help.\n' % data)
                                 self.logger.debug(data)
                         else:
+                            self.logger.debug('Client disconncted: %s' % str(addr))
                             inputs.remove(s)
                             s.close()
                     except socket.error, e:
-                        self.logger.exception('Something wrong with socket_server')
+                        self.logger.exception('Something wrong with client: %s' % str(addr))
                         inputs.remove(s)
 
-        self.server.close()
-    
     def start(self):
         self.logger.info('Metarax is warping out of the Twisting Nether')
 
-        # init database
         try:
             db_conn = sqlite3.connect(self.db)
             db_cursor = db_conn.cursor()
@@ -208,8 +231,7 @@ class Metarax:
         self.sa_stop.set()
 
         self.server.shutdown()
-
-        self.db_conn.close()
+        self.server.close()
 
 def run():
     d = Metarax()
