@@ -7,12 +7,13 @@ import cgitb
 import socket
 import ConfigParser
 import sys
+import os
 
 cgitb.enable()
 
 def get_metric(metric):
 	config = ConfigParser.ConfigParser()
-	config.read(['/vagrant/.metarax.cfg'])
+	config.read([os.path.expanduser('~/.metarax.cfg'), '/vagrant/.metarax.cfg', '/etc/metarax.cfg'])
 
 	host = config.get('socket_server', 'host')
 	port = config.getint('socket_server', 'port')
@@ -45,10 +46,10 @@ elif 'disk_util' in form:
 else:
 	action = ''
 
-# print "Content-Type: text/html;charset=utf-8"
-# print action
 if action:
 	metric_value = get_metric(action)
+else:
+	metric_value = ''
 
 print "Content-Type: text/html;charset=utf-8"
 print
@@ -66,7 +67,7 @@ print """
 <input type="submit" name="vhost_top" value="Vhost Top" />
 <input type="submit" name="mysql_util" value="MySQL Utilization" />
 <input type="submit" name="disk_util" value="Disk Utilization" />
-<p>Previous message: %s</p>
+<p>Value: %s</p>
 </form>
 </body>
 </html

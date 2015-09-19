@@ -2,12 +2,12 @@
 Description=Metarax, The Monitoring Daemon
 
 [Service]
-ExecStart=/vagrant/metarax.py
+ExecStart=/usr/bin/metarax.py
 KillSignal=SIGTERM
 KillMode=process
 PIDFile=/var/tmp/metarax.pid
-User=vagrant
-Group=vagrant
+User=metarax
+Group=metarax
 
 [Install]
 WantedBy=multi-user.target

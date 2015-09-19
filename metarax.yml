@@ -1,0 +1,54 @@
+---
+- hosts: all
+  roles:
+  - { role: goozbach.EPEL, tags: [ epel ] }
+
+  tasks:
+  - name: ensure python-daemon
+    yum: pkg=python-daemon state=latest
+  - name: copy metarax.py
+    copy: src=/vagrant/metarax.py dest=/usr/bin/metarax.py mode=0755
+    notify:
+      - reload_metarax
+  - name: create config file
+    template: src=/vagrant/.metarax.cfg dest=/etc/metarax.cfg
+    notify:
+      - reload_metarax
+  - name: ensure httpd
+    yum: pkg=httpd state=latest
+  - name: httpd config
+    template: src=/vagrant/httpd.conf dest=/etc/httpd/conf/httpd.conf 
+    notify:
+      - reload_httpd
+  - name: create metarax.cgi
+    template: src=/vagrant/metarax.cgi dest=/var/www/cgi-bin/metarax.cgi mode=0755 owner=apache group=apache
+  - name: create metarax group
+    group: name=metarax
+  - name: create metarax user
+    user: name=metarax shell=/sbin/nologin group=metarax
+  - name: create log directory
+    file: path=/var/log/metarax state=directory owner=metarax group=metarax
+  - name: create db directory
+    file: path=/var/run/metarax state=directory owner=metarax group=metarax
+  - name: add firewall rule
+    firewalld: service=http permanent=true state=enabled
+    notify: reload_firewalld
+    tags:
+      - firewall
+  - name: add systemd service
+    template: src=/vagrant/metarax.service dest=/lib/systemd/system/metarax.service owner=root group=root mode=644
+    notify: reload_systemd
+  - name: ensure metarax service
+    service: name=metarax state=started enabled=yes
+  - name: ensure httpd service
+    service: name=httpd state=started enabled=yes
+
+  handlers:
+    - name: reload_firewalld
+      command: /usr/bin/firewall-cmd --reload
+    - name: reload_systemd
+      command: /usr/bin/systemctl --system daemon-reload
+    - name: reload_metarax
+      service: name=metarax state=restarted
+    - name: reload_httpd
+      service: name=httpd state=restarted
