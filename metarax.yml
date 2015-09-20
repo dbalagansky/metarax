@@ -22,14 +22,26 @@
       - reload_httpd
   - name: create metarax.cgi
     template: src=/vagrant/metarax.cgi dest=/var/www/cgi-bin/metarax.cgi mode=0755 owner=apache group=apache
+  - name: ensure libsemanage-python (for seboolean)
+    yum: pkg=libsemanage-python state=latest
+  - name: allow httpd connect
+    seboolean: name=httpd_can_network_connect state=yes #persistent=yes
   - name: create metarax group
     group: name=metarax
   - name: create metarax user
     user: name=metarax shell=/sbin/nologin group=metarax
   - name: create log directory
     file: path=/var/log/metarax state=directory owner=metarax group=metarax
+    notify:
+      - reload_metarax
   - name: create db directory
     file: path=/var/run/metarax state=directory owner=metarax group=metarax
+    notify:
+      - reload_metarax
+  - name: install sysstat
+    yum: pkg=sysstat state=latest
+    notify:
+      - reload_metarax
   - name: add firewall rule
     firewalld: service=http permanent=true state=enabled
     notify: reload_firewalld

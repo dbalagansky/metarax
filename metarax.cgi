@@ -34,22 +34,34 @@ def get_metric(metric):
 
 form = cgi.FieldStorage()
 if 'cpu_top' in form:
-	action = 'cpu_top'
+	action = 'cpu'
+	head = ''
+	tail = ''
 elif 'diskio_util' in form:
 	action = 'diskio'
+	head = 'Disk I/O: '
+	tail = '% for /home, avg for last 10 minutes'
 elif 'vhost_top' in form:
-	action = 'vhost_top'
+	action = 'vhost'
+	head = ''
+	tali =''
 elif 'mysql_util' in form:
-	action = 'mysql_util'
+	action = 'mysql'
+	head = ''
+	tail = ''
 elif 'disk_util' in form:
-	action = 'disk_util'
+	action = 'disk' 
+	head = 'Disk Utilization: '
+	tail = 'Bytes for /home, changed since last hour'
 else:
 	action = ''
+	head = ''
+	tail = ''
 
 if action:
-	metric_value = get_metric(action)
+	response = head + get_metric(action) + tail
 else:
-	metric_value = ''
+	response = 'Error, check log for details'
 
 print "Content-Type: text/html;charset=utf-8"
 print
@@ -67,9 +79,9 @@ print """
 <input type="submit" name="vhost_top" value="Vhost Top" />
 <input type="submit" name="mysql_util" value="MySQL Utilization" />
 <input type="submit" name="disk_util" value="Disk Utilization" />
-<p>Value: %s</p>
+<p>%s</p>
 </form>
 </body>
 </html
-""" % cgi.escape(metric_value)
+""" % cgi.escape(response)
 

@@ -99,7 +99,7 @@ class Metarax:
             db_conn = sqlite3.connect(self.db)
             db_cursor = db_conn.cursor()
         except:
-            self.logger.exception('fuck')
+            self.logger.exception('Can not connect to DB')
         while not stop_event.is_set():
             output = subprocess.check_output("iostat -d -xN `df -P /home | tail -1 | cut -f 1 -d ' ' | sed -e 's/^.*\///'` 1 2 | tail -2 | head -1 | awk '{ print $14 }'", shell=True).rstrip()
             try:
@@ -116,23 +116,23 @@ class Metarax:
 
     def sampler_mysql_util(self, stop_event):
         self.logger.info('MySQL utilization sampler started!')
+        while not stop_event.is_set():
+            stop_event.wait(self.sampler_mysql_util_interval)
+
+    def sampler_disk_util(self, stop_event):
+        self.logger.info('Disk utilization sampler started!')
         try:
             db_conn = sqlite3.connect(self.db)
             db_cursor = db_conn.cursor()
         except:
-            self.logger.exception('where is enterprise manager?')
+            self.logger.exception('Can not connect to DB')
         while not stop_event.is_set():
-            output = subprocess(check_output("df -B 1 --output=avail /home | tail -1", shell=True)).rstrip()
+            output = subprocess.check_output("df -B 1 --output=avail /home | tail -1", shell=True).rstrip()
             try:
                 db_cursor.execute('insert into {} values (?, ?)'.format(self.disk_util_table), (int(time.time()), output))
                 db_conn.commit()
             except:
                 self.logger.exception('Something went wrong. If this is a bug, please submit a report to My Oracle Support')
-            stop_event.wait(self.sampler_mysql_util_interval)
-
-    def sampler_disk_util(self, stop_event):
-        self.logger.info('Disk utilization sampler started!')
-        while not stop_event.is_set():
             stop_event.wait(self.sampler_disk_util_interval)
 
     def sampler(self, stop_event):
@@ -153,14 +153,14 @@ class Metarax:
         self.du.start()
 
     def get_cpu(self):
-        pass
+        return 0
 
     def get_diskio(self):
         try:
             db_conn = sqlite3.connect(self.db)
             db_cursor = db_conn.cursor()
 
-            db_cursor.execute('select avg(percent) from {} where date between {} and {}'.format(self.diskio_util_table, int(time.time()) - 3600, int(time.time())))
+            db_cursor.execute('select avg(percent) from {} where date between {} and {}'.format(self.diskio_util_table, int(time.time()) - 600, int(time.time())))
             diskio_avg = db_cursor.fetchone()[0]
             self.logger.debug(diskio_avg)
 
@@ -171,7 +171,7 @@ class Metarax:
         return float("%.02f" % diskio_avg)
 
     def get_vhost(self):
-        pass
+        return 0
 
     def get_mysql(self):
         return 0
@@ -181,15 +181,24 @@ class Metarax:
             db_conn = sqlite3.connect(self.db)
             db_cursor = db_conn.cursor()
 
-            db_cursor.execute('select avg(percent) from {} where date between {} and {}'.format(self.diskio_util_table, int(time.time()) - 3600, int(time.time())))
-            diskio_avg = db_cursor.fetchone()[0]
-            self.logger.debug(diskio_avg)
+            db_cursor.execute('select avail from {} where date < {} limit 1'.format(self.disk_util_table, int(time.time()) - 3600))
+            disk_avail_was = db_cursor.fetchone()
+            if not disk_avail_was:
+                db_cursor.execute('select avail from {} order by rowid asc limit 1'.format(self.disk_util_table))
+                disk_avail_was = db_cursor.fetchone()[0]
+            else:
+                disk_avail_was = disk_avail_was[0]
+            self.logger.debug(disk_avail_was)
+
+            db_cursor.execute('select avail from {} order by rowid desc limit 1'.format(self.disk_util_table))
+            disk_avail_now = db_cursor.fetchone()[0]
+            self.logger.debug(disk_avail_now)
 
             db_conn.close()
         except:
             self.logger.exception('stupid database')
 
-        return int(diskio_avg)
+        return int(disk_avail_now) - int(disk_avail_was)
 
     def usage(self):
         return """Available commands:
@@ -241,11 +250,11 @@ shutdown"""
                             elif cmd == 'diskio':
                                 s.send('OK %f\n' % self.get_diskio())
                             elif cmd == 'vhost':
-                                s.send('OK %d\n' % self.vhost())
+                                s.send('OK %d\n' % self.get_vhost())
                             elif cmd == 'vhost':
-                                s.send('OK %d\n' % self.mysql())
+                                s.send('OK %d\n' % self.get_mysql())
                             elif cmd == 'disk':
-                                s.send('OK %d\n' % self.disk())
+                                s.send('OK %d\n' % self.get_disk())
                             elif cmd == 'shutdown':
                                 s.send('OK %s\n' % self.shutdown())
                             elif cmd == 'help':
@@ -267,7 +276,7 @@ shutdown"""
             s.sendmail(self.alerter_from, self.alerter_to, msg.as_string())
             s.quit()
         except:
-            self.logger.exception('mail is fucked up')
+            self.logger.exception('Can not send Email')
 
     def alerter(self, stop_event):
         self.logger.info('Alerter started!')
@@ -289,7 +298,7 @@ shutdown"""
                 del msg['Subject']
                 msg['Subject'] = 'Number of MySQL threads is too high'
                 self.send_email(msg)
-            elif self.get_disk() > 5000000000:
+            elif self.get_disk() < -5000000000:
                 self.logger.debug('Disk utilization is too high, sending alert')
                 del msg['Subject']
                 msg['Subject'] = 'Disk utilization is too high'
