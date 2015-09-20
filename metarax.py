@@ -16,29 +16,6 @@ import signal
 import smtplib
 from email.mime.text import MIMEText
 
-# это будет класс для основных потоков (sampler, socket_server, alerter?)
-# хотя, пока можно просто гасить тред sampler'а в треде socket_server. 
-#class MetaraxTendril:
-    #def ctl_thread(self, thread, target, stop, action):
-        #self.logger.debug('Checking if thread %s exists', thread)
-        #if not thread:
-            #thread = threading.Thread(target=target, args=(stop, ))
-
-        #self.logger.debug('Running acton on %s thread', thread)
-        #if action == 'start':
-            #self.logger.debug('action start')
-            #try:
-                #if not thread.is_alive():
-                    #self.logger.debug('Thread %s is not alive, starting', thread)
-                    #thread.start()
-            #except:
-                #self.logger.exception('Exception with thread %s', thread)
-        #elif action == 'stop':
-            #if thread.is_alive():
-                #stop.set()
-        #else:
-            #pass
-
 class Metarax:
     def __init__(self):
         config = ConfigParser.ConfigParser()
@@ -52,7 +29,6 @@ class Metarax:
         self.stdout_path = config.get('daemon', 'stdout_path')
         self.stderr_path = config.get('daemon', 'stderr_path')
         self.pidfile_path = config.get('daemon', 'pidfile_path')
-        #self.pidfile_timeout = config.getint('daemon', 'pidfile_timeout')
 
         self.sampler_cpu_top_interval = config.getint('sampler', 'cpu_top_interval')
         self.sampler_diskio_util_interval = config.getint('sampler', 'diskio_util_interval')
@@ -162,7 +138,6 @@ class Metarax:
 
             db_cursor.execute('select avg(percent) from {} where date between {} and {}'.format(self.diskio_util_table, int(time.time()) - 600, int(time.time())))
             diskio_avg = db_cursor.fetchone()[0]
-            self.logger.debug(diskio_avg)
 
             db_conn.close()
         except:
@@ -188,11 +163,9 @@ class Metarax:
                 disk_avail_was = db_cursor.fetchone()[0]
             else:
                 disk_avail_was = disk_avail_was[0]
-            self.logger.debug(disk_avail_was)
 
             db_cursor.execute('select avail from {} order by rowid desc limit 1'.format(self.disk_util_table))
             disk_avail_now = db_cursor.fetchone()[0]
-            self.logger.debug(disk_avail_now)
 
             db_conn.close()
         except:
@@ -251,7 +224,7 @@ shutdown"""
                                 s.send('OK %f\n' % self.get_diskio())
                             elif cmd == 'vhost':
                                 s.send('OK %d\n' % self.get_vhost())
-                            elif cmd == 'vhost':
+                            elif cmd == 'mysql':
                                 s.send('OK %d\n' % self.get_mysql())
                             elif cmd == 'disk':
                                 s.send('OK %d\n' % self.get_disk())
@@ -263,7 +236,7 @@ shutdown"""
                                 s.send('FAIL %s\nUse \'help\' for help.\n' % data)
                                 self.logger.debug(data)
                         else:
-                            self.logger.debug('Client disconncted: %s' % str(addr))
+                            self.logger.debug('Client disconnected: %s' % str(addr))
                             inputs.remove(s)
                             s.close()
                     except socket.error, e:

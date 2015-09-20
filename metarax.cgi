@@ -44,7 +44,7 @@ elif 'diskio_util' in form:
 elif 'vhost_top' in form:
 	action = 'vhost'
 	head = ''
-	tali =''
+	tail =''
 elif 'mysql_util' in form:
 	action = 'mysql'
 	head = ''
@@ -61,7 +61,7 @@ else:
 if action:
 	response = head + get_metric(action) + tail
 else:
-	response = 'Error, check log for details'
+	response = ''
 
 print "Content-Type: text/html;charset=utf-8"
 print
