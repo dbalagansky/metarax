@@ -156,15 +156,15 @@ class Metarax:
             db_conn = sqlite3.connect(self.db)
             db_cursor = db_conn.cursor()
 
-            db_cursor.execute('select avail from {} where date < {} limit 1'.format(self.disk_util_table, int(time.time()) - 3600))
+            db_cursor.execute('select avail from {} where date < {} order by date desc limit 1'.format(self.disk_util_table, int(time.time()) - 3600))
             disk_avail_was = db_cursor.fetchone()
             if not disk_avail_was:
-                db_cursor.execute('select avail from {} order by rowid asc limit 1'.format(self.disk_util_table))
+                db_cursor.execute('select avail from {} order by date asc limit 1'.format(self.disk_util_table))
                 disk_avail_was = db_cursor.fetchone()[0]
             else:
                 disk_avail_was = disk_avail_was[0]
 
-            db_cursor.execute('select avail from {} order by rowid desc limit 1'.format(self.disk_util_table))
+            db_cursor.execute('select avail from {} order by date desc limit 1'.format(self.disk_util_table))
             disk_avail_now = db_cursor.fetchone()[0]
 
             db_conn.close()
